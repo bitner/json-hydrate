@@ -2,12 +2,10 @@ use serde_json::{Value};
 
 pub fn hydrate(base: Value, item: &mut Value) {
     if item.is_null(){
-        println!("item {} is empty base is {}", item, base);
         *item = base.clone();
     }
     else if item.is_object() {
         if item.as_object() == base.as_object(){
-            println!("item {} == base {}", item, base);
             return;
         }
         if let Value::Object(item) = item {
@@ -15,19 +13,15 @@ pub fn hydrate(base: Value, item: &mut Value) {
                 for (key, baseval) in base {
                     if item.get(key).is_some(){
                         let itemval = item.get_mut(key).unwrap();
-                        println!("key {} baseval {} itemval {}", key, baseval, itemval);
                         if itemval.as_str() == Some("𒍟※" ){
-                            println!("REMOVE KEY {}", key);
                             item.remove(key);
                         }
                         else {
                             hydrate(baseval.clone(), itemval);
-                            println!("BASE {} ITEM {}", baseval, itemval);
                         }
 
                     }
                     else {
-                        println!("key {} is null in item", key);
                         item.entry(key).or_insert(baseval.clone());
                     }
 
@@ -41,18 +35,12 @@ pub fn hydrate(base: Value, item: &mut Value) {
                 if item.len() == base.len(){
                     println!("item len == base len");
                     for i in 0..item.len(){
-                        println!("array element {} {}", item[i], base[i]);
                         hydrate(base[i].clone(), &mut item[i]);
                     }
-                }
-                else {
-                    println!("item len != base len");
                 }
             }
         }
     }
-
-    println!("FINAL ITEM {} BASE {}", item, base);
 }
 
 #[cfg(test)]
