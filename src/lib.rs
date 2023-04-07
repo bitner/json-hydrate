@@ -1,40 +1,34 @@
-use serde_json::{Value};
+use serde_json::Value;
 
 pub fn hydrate(base: Value, item: &mut Value) {
-    if item.is_null(){
+    if item.is_null() {
         *item = base.clone();
-    }
-    else if item.is_object() {
-        if item.as_object() == base.as_object(){
+    } else if item.is_object() {
+        if item.as_object() == base.as_object() {
             return;
         }
         if let Value::Object(item) = item {
             if let Value::Object(ref base) = base {
                 for (key, baseval) in base {
-                    if item.get(key).is_some(){
+                    if item.get(key).is_some() {
                         let itemval = item.get_mut(key).unwrap();
-                        if itemval.as_str() == Some("𒍟※" ){
+                        if itemval.as_str() == Some("𒍟※") {
                             item.remove(key);
-                        }
-                        else {
+                        } else {
                             hydrate(baseval.clone(), itemval);
                         }
-
-                    }
-                    else {
+                    } else {
                         item.entry(key).or_insert(baseval.clone());
                     }
-
                 }
             }
         }
-    }
-    else if item.is_array(){
+    } else if item.is_array() {
         if let Value::Array(item) = item {
             if let Value::Array(ref base) = base {
-                if item.len() == base.len(){
+                if item.len() == base.len() {
                     println!("item len == base len");
-                    for i in 0..item.len(){
+                    for i in 0..item.len() {
                         hydrate(base[i].clone(), &mut item[i]);
                     }
                 }
@@ -46,7 +40,7 @@ pub fn hydrate(base: Value, item: &mut Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json};
+    use serde_json::json;
 
     #[test]
     fn test_equal_hydrate() {
@@ -220,5 +214,4 @@ mod tests {
         hydrate(base, &mut item);
         assert_eq!(item, target);
     }
-
 }
