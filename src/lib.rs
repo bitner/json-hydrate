@@ -1,59 +1,74 @@
-use serde_json::{Value};
+use serde_json::{Map, Value};
+use thiserror::Error;
 
-pub fn hydrate(base: Value, item: &mut Value) {
-    if item.is_null(){
-        *item = base.clone();
-    }
-    else if item.is_object() {
-        if item.as_object() == base.as_object(){
-            return;
-        }
-        if let Value::Object(item) = item {
-            if let Value::Object(ref base) = base {
-                for (key, baseval) in base {
-                    if item.get(key).is_some(){
-                        let itemval = item.get_mut(key).unwrap();
-                        if itemval.as_str() == Some("𒍟※" ){
-                            item.remove(key);
-                        }
-                        else {
-                            hydrate(baseval.clone(), itemval);
-                        }
+const MAGIC_MARKER: &str = "𒍟※";
 
-                    }
-                    else {
-                        item.entry(key).or_insert(baseval.clone());
-                    }
+pub trait Hydrate {
+    fn hydrate(&mut self, base: Self) -> Result<(), Error>;
+}
 
-                }
-            }
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("type mismatch")]
+    TypeMismatch(Value, Value),
+}
+
+impl Hydrate for Value {
+    fn hydrate(&mut self, base: Self) -> Result<(), Error> {
+        match self {
+            Value::Object(item) => match base {
+                Value::Object(base) => item.hydrate(base),
+                _ => Err(Error::TypeMismatch(self.clone(), base)),
+            },
+            Value::Array(item) => match base {
+                Value::Array(base) => item.hydrate(base),
+                _ => Err(Error::TypeMismatch(self.clone(), base)),
+            },
+            _ => Ok(()),
         }
     }
-    else if item.is_array(){
-        if let Value::Array(item) = item {
-            if let Value::Array(ref base) = base {
-                if item.len() == base.len(){
-                    println!("item len == base len");
-                    for i in 0..item.len(){
-                        hydrate(base[i].clone(), &mut item[i]);
-                    }
-                }
+}
+
+impl Hydrate for Vec<Value> {
+    fn hydrate(&mut self, base: Self) -> Result<(), Error> {
+        for (item, base) in self.iter_mut().zip(base.into_iter()) {
+            item.hydrate(base)?;
+        }
+        Ok(())
+    }
+}
+
+impl Hydrate for Map<String, Value> {
+    fn hydrate(&mut self, base: Self) -> Result<(), Error> {
+        for (key, base_value) in base {
+            if self
+                .get(&key)
+                .and_then(|value| value.as_str())
+                .map(|s| s == MAGIC_MARKER)
+                .unwrap_or(false)
+            {
+                self.remove(&key);
+            } else if let Some(self_value) = self.get_mut(&key) {
+                self_value.hydrate(base_value)?;
+            } else {
+                self.insert(key, base_value);
             }
         }
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::{json};
+    use super::Hydrate;
+    use serde_json::json;
 
     #[test]
     fn test_equal_hydrate() {
         let base = json!({"a": "first", "b": "second", "c": "third"});
         let mut item = json!({"a": "first", "b": "second", "c": "third"});
         let target = json!({"a": "first", "b": "second", "c": "third"});
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -62,7 +77,7 @@ mod tests {
         let base = json!({"a": "first", "b": "second", "c": "third"});
         let mut item = json!({});
         let target = json!({"a": "first", "b": "second", "c": "third"});
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -71,7 +86,7 @@ mod tests {
         let base = json!({"a": "first", "b": "second", "c": {"d": "third"}});
         let mut item = json!({});
         let target = json!({"a": "first", "b": "second", "c": {"d": "third"}});
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -84,7 +99,7 @@ mod tests {
             "b": "second",
             "c": {"d": "third", "e": "fourth", "f": "fifth"},
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -95,7 +110,7 @@ mod tests {
         let target = json!({
             "a": [{"b1": 1, "b2": 2, "b3": 3}, {"c1": 1, "c2": 2, "c3": 3}],
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -111,7 +126,7 @@ mod tests {
                 "boo",
             ],
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -120,7 +135,7 @@ mod tests {
         let base = json!({"a": [{"b1": 1}, {"c1": 1}, {"d1": 1}]});
         let mut item = json!({"a": [{"b1": 1, "b2": 2}, {"c1": 1, "c2": 2}]});
         let target = json!({"a": [{"b1": 1, "b2": 2}, {"c1": 1, "c2": 2}]});
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -137,7 +152,7 @@ mod tests {
             "b": "second",
             "c": {"d": "third", "f": "fifth"},
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -153,7 +168,7 @@ mod tests {
             ],
         });
         let target = json!({"a": [{"b": "first"}, {"c": "second", "f": "fifth"}]});
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -164,7 +179,7 @@ mod tests {
         let target = json!({
             "a": {"b": {"c": {"d": "first", "d1": "second", "d2": "third"}}},
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -175,7 +190,7 @@ mod tests {
         let target = json!({
             "assets": {"thumbnail": {"roles": ["thumbnail"], "href": "http://foo.com"}},
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -198,7 +213,7 @@ mod tests {
             "type": "Feature",
             "assets": {"asset1": {"name": "Asset one", "href": "http://foo.com"}},
         });
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
 
@@ -217,8 +232,7 @@ mod tests {
             "unique": "value",
         });
         let target = json!({"included": "value", "unique": "value"});
-        hydrate(base, &mut item);
+        item.hydrate(base).unwrap();
         assert_eq!(item, target);
     }
-
 }
